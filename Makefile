@@ -1,2 +1,2 @@
 all:
-	gcc hub.c -Wall -Wextra -o hub
+	gcc hub.c -Wall -Wextra -Werror -pedantic -o hub
