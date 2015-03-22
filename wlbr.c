@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <sysexits.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
@@ -32,28 +33,28 @@ main(const int argc, const char **argv) {
   
   if(!((argc == 3) || ((argc == 4) && strncmp(argv[1], "-d", 3)))) {
     printf(USAGE);
-    exit(1);
+    exit(EX_USAGE);
   }
   networkInterfaceName = argv[argc - 2];
   clientInterfaceName = argv[argc - 1];
 
   /* Check interface names and get indices */
   if(!(networkInterfaceIndex = if_nametoindex(networkInterfaceName)))
-    exitMessage(1, "Error: Interface %s does not exist", networkInterfaceName);
+    exitMessage(EX_CONFIG, "Error: Interface %s does not exist", networkInterfaceName);
   if(!(clientInterfaceIndex = if_nametoindex(clientInterfaceName)))
-    exitMessage(1, "Error: Interface %s does not exist", clientInterfaceName);
+    exitMessage(EX_CONFIG, "Error: Interface %s does not exist", clientInterfaceName);
 
   /* Create socket */
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
-    exitMessage(1, "Error: Could not create socket");
+    exitMessage(EX_IOERR, "Error: Could not create socket");
 
   /* Put client interface into promiscuous mode */
   strncpy(ifreq.ifr_name, clientInterfaceName, IFNAMSIZ - 1);
   if(ioctl(socketFd, SIOCGIFFLAGS, &ifreq))
-    exitMessage(1, "Error: Could not execute interface reuqest");
+    exitMessage(EX_OSERR, "Error: Could not execute interface reuqest");
   ifreq.ifr_flags |= IFF_PROMISC;
   if(ioctl(socketFd, SIOCSIFFLAGS, &ifreq))
-    exitMessage(1, "Error: Could not execute interface reuqest");
+    exitMessage(EX_OSERR, "Error: Could not execute interface reuqest");
 
   /* Set outgoing interface indices and address length */
   memset(&networkInterfaceAddress, 0, sizeof(struct sockaddr_ll));
@@ -72,15 +73,15 @@ main(const int argc, const char **argv) {
         if(sendto(socketFd, buffer, bytesRead, 0,
               (struct sockaddr*) &clientInterfaceAddress, sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(1, "Error: Could not send data");
+          exitMessage(EX_IOERR, "Error: Could not send data");
       if(packetAddress.sll_ifindex == clientInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
               (struct sockaddr*) &networkInterfaceAddress, sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(1, "Error: Could not send data");
+          exitMessage(EX_IOERR, "Error: Could not send data");
     }
 
-  return 0;
+  return EX_OK;
 }
 
 
