@@ -10,7 +10,7 @@
 #include <net/if.h>
 
 
-#define USAGE "Usage: hub [-d] network-if client-if\n"
+#define USAGE "Usage: wlbr [-d] wireless-if client-if\n"
 #define BUFFER_SIZE 2048
 
 
