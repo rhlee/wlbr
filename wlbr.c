@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <string.h>
 #include <sysexits.h>
+#include <signal.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
@@ -18,18 +20,30 @@
 void setupAddress(struct sockaddr_ll *address, const int index);
 
 
+void handler(int signalNumber);
 void exitMessage(const int exitCode,  const char *format, ...);
 
-/* TODO: Close fd's */
+
+int socketFd;
+
 
 int
 main(const int argc, const char **argv) {
   const char *networkInterfaceName, *clientInterfaceName;
-  int socketFd, networkInterfaceIndex, clientInterfaceIndex, bytesRead;
+  int networkInterfaceIndex, clientInterfaceIndex, bytesRead;
   struct sockaddr_ll networkInterfaceAddress, clientInterfaceAddress, packetAddress;
   uint8_t buffer[BUFFER_SIZE];
   socklen_t packetAddressLen = sizeof(packetAddress);
   struct ifreq ifreq;
+
+  if(signal(SIGINT, handler) == SIG_ERR) {
+    fprintf(stderr, "Error: Could not register signal handler\n");
+    exit(EX_OSERR);
+  }
+  if(signal(SIGTERM, handler) == SIG_ERR) {
+    fprintf(stderr, "Error: Could not register signal handler\n");
+    exit(EX_OSERR);
+  }
   
   if(!((argc == 3) || ((argc == 4) && strncmp(argv[1], "-d", 3)))) {
     printf(USAGE);
@@ -84,6 +98,13 @@ main(const int argc, const char **argv) {
   return EX_OK;
 }
 
+
+void
+handler(int signalNumber) {
+  (void) signalNumber;
+  close(socketFd);
+  exit(EX_OK);
+}
 
 void
 exitMessage(const int exitCode,  const char *format, ...) {
