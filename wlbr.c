@@ -6,6 +6,7 @@
 #include <sysexits.h>
 #include <signal.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
@@ -13,7 +14,7 @@
 #include <net/if.h>
 
 
-#define USAGE "Usage: wlbr [-d] wireless-if client-if\n"
+#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if\n"
 #define BUFFER_SIZE 2048
 
 
@@ -28,10 +29,13 @@ int socketFd;
 
 
 int
-main(const int argc, const char **argv) {
-  const char *networkInterfaceName, *clientInterfaceName;
-  int networkInterfaceIndex, clientInterfaceIndex, bytesRead;
-  struct sockaddr_ll networkInterfaceAddress, clientInterfaceAddress, packetAddress;
+main(const int argc, char *const argv[]) {
+  bool nonoption = false;
+  const char *configFile = NULL,
+    *networkInterfaceName = NULL, *clientInterfaceName = NULL;
+  int optChar, networkInterfaceIndex, clientInterfaceIndex, bytesRead;
+  struct sockaddr_ll networkInterfaceAddress, clientInterfaceAddress,
+    packetAddress;
   uint8_t buffer[BUFFER_SIZE];
   socklen_t packetAddressLen = sizeof(packetAddress);
   struct ifreq ifreq;
@@ -44,19 +48,42 @@ main(const int argc, const char **argv) {
     fprintf(stderr, "Error: Could not register signal handler\n");
     exit(EX_OSERR);
   }
-  
-  if(!((argc == 3) || ((argc == 4) && strncmp(argv[1], "-d", 3)))) {
-    printf(USAGE);
-    exit(EX_USAGE);
-  }
-  networkInterfaceName = argv[argc - 2];
-  clientInterfaceName = argv[argc - 1];
 
+  while((optChar = getopt(argc, argv, "-c:d:")) != -1) {
+    if(optChar == 1) {
+      nonoption = true;
+      if(networkInterfaceName)
+        clientInterfaceName = optarg;
+      else
+        networkInterfaceName = optarg;
+    }
+    else {
+      if(nonoption) {
+        printf(USAGE);
+        exit(EX_USAGE);
+      }
+      switch(optChar) {
+        case 'c':
+          configFile = optarg;
+          break;
+        case 'd':
+          break;
+        default:
+          printf(USAGE);
+          exit(EX_USAGE);
+      }
+    }
+  }
+  /*remove this*/
+  (void)configFile;
+  
   /* Check interface names and get indices */
   if(!(networkInterfaceIndex = if_nametoindex(networkInterfaceName)))
-    exitMessage(EX_CONFIG, "Error: Interface %s does not exist", networkInterfaceName);
+    exitMessage(EX_CONFIG,
+      "Error: Interface %s does not exist",networkInterfaceName);
   if(!(clientInterfaceIndex = if_nametoindex(clientInterfaceName)))
-    exitMessage(EX_CONFIG, "Error: Interface %s does not exist", clientInterfaceName);
+    exitMessage(EX_CONFIG,
+      "Error: Interface %s does not exist", clientInterfaceName);
 
   /* Create socket */
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
@@ -85,12 +112,14 @@ main(const int argc, const char **argv) {
     if(packetAddress.sll_pkttype != 4) {
       if(packetAddress.sll_ifindex == networkInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
-              (struct sockaddr*) &clientInterfaceAddress, sizeof(struct sockaddr_ll)) !=
+              (struct sockaddr*) &clientInterfaceAddress,
+              sizeof(struct sockaddr_ll)) !=
             bytesRead)
           exitMessage(EX_IOERR, "Error: Could not send data");
       if(packetAddress.sll_ifindex == clientInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
-              (struct sockaddr*) &networkInterfaceAddress, sizeof(struct sockaddr_ll)) !=
+              (struct sockaddr*) &networkInterfaceAddress,
+              sizeof(struct sockaddr_ll)) !=
             bytesRead)
           exitMessage(EX_IOERR, "Error: Could not send data");
     }
