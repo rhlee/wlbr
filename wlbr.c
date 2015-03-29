@@ -8,7 +8,9 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <syslog.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
@@ -17,12 +19,21 @@
 
 #define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if"
 #define BUFFER_SIZE 2048
+#define MAX_ARGS 6
+
+
+struct config {
+  bool daemonize;
+  const char *networkInterfaceName;
+  const char *clientInterfaceName;
+};
 
 
 void setupAddress(struct sockaddr_ll *address, const int index);
 
 
 void handler(const int signalNumber);
+void getConfig(struct config *config, const int argc, char *const argv[]);
 void vwriteLog(const int priority, const char *format, va_list vargs);
 void writeLog(const int priority, const char *format, ...);
 void exitMessage(const int errrorNumber, const int exitCode,
@@ -34,10 +45,8 @@ int socketFd;
 
 int
 main(const int argc, char *const argv[]) {
-  bool nonoption = false;
-  const char *configFile = NULL,
-    *networkInterfaceName = NULL, *clientInterfaceName = NULL;
-  int optChar, networkInterfaceIndex, clientInterfaceIndex, bytesRead;
+  struct config config;
+  int networkInterfaceIndex, clientInterfaceIndex, bytesRead;
   struct sockaddr_ll networkInterfaceAddress, clientInterfaceAddress,
     packetAddress;
   uint8_t buffer[BUFFER_SIZE];
@@ -49,46 +58,25 @@ main(const int argc, char *const argv[]) {
   if(signal(SIGTERM, handler) == SIG_ERR)
     exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
 
-  while((optChar = getopt(argc, argv, "-c:d:")) != -1) {
-    if(optChar == 1) {
-      nonoption = true;
-      if(networkInterfaceName)
-        clientInterfaceName = optarg;
-      else
-        networkInterfaceName = optarg;
-    }
-    else {
-      if(nonoption) exitMessage(0, EX_USAGE, USAGE);
-      switch(optChar) {
-        case 'c':
-          configFile = optarg;
-          break;
-        case 'd':
-          break;
-        default:
-          exitMessage(0, EX_USAGE, USAGE);
-      }
-    }
-  }
-  if(!(networkInterfaceName || clientInterfaceName))
+  memset(&config, 0, sizeof(struct config));
+  getConfig(&config, argc, argv);
+  if(!(config.networkInterfaceName && config.clientInterfaceName))
     exitMessage(0, EX_USAGE, USAGE);
-  /*remove this*/
-  (void)configFile;
   
   /* Check interface names and get indices */
-  if(!(networkInterfaceIndex = if_nametoindex(networkInterfaceName)))
+  if(!(networkInterfaceIndex = if_nametoindex(config.networkInterfaceName)))
     exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist",networkInterfaceName);
-  if(!(clientInterfaceIndex = if_nametoindex(clientInterfaceName)))
+      "Error: Interface %s does not exist",config.networkInterfaceName);
+  if(!(clientInterfaceIndex = if_nametoindex(config.clientInterfaceName)))
     exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist", clientInterfaceName);
+      "Error: Interface %s does not exist", config.clientInterfaceName);
 
   /* Create socket */
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
     exitMessage(errno, EX_IOERR, "Error: Could not create socket");
 
   /* Put client interface into promiscuous mode */
-  strncpy(ifreq.ifr_name, clientInterfaceName, IFNAMSIZ - 1);
+  strncpy(ifreq.ifr_name, config.clientInterfaceName, IFNAMSIZ - 1);
   if(ioctl(socketFd, SIOCGIFFLAGS, &ifreq))
     exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
   ifreq.ifr_flags |= IFF_PROMISC;
@@ -129,8 +117,65 @@ main(const int argc, char *const argv[]) {
 void
 handler(const int signalNumber) {
   (void) signalNumber;
+  /* ------ log here -------*/
   close(socketFd);
   exit(EX_OK);
+}
+
+void
+getConfig(struct config *config, const int argc, char *const argv[]) {
+  char *configFileArgv[MAX_ARGS];
+  char buffer[BUFFER_SIZE];
+  int file, bytesRead, nonoption = 0, optChar, configFileArgc = 0;
+
+  while((optChar = getopt(argc, argv, "-c:d")) != -1) {
+    if(optChar == 1) {
+      switch(nonoption) {
+        case 0:
+          config->networkInterfaceName = optarg;
+          break;
+        case 1:
+          config->clientInterfaceName = optarg;
+          break;
+        default:
+          exitMessage(0, EX_USAGE, USAGE);
+      }
+      nonoption++;
+    }
+    else {
+      if(nonoption) exitMessage(0, EX_USAGE, USAGE);
+      switch(optChar) {
+        case 'c':
+          if(!*argv) exitMessage(0, EX_USAGE, USAGE);
+          if(argc != 3) exitMessage(0, EX_USAGE, USAGE);
+          if((file = open(optarg, O_RDONLY)) == -1)
+            exitMessage(errno, EX_IOERR, "Error: Could not open input file");
+          if((bytesRead = read(file, buffer, BUFFER_SIZE - 1)) == -1)
+            exitMessage(errno, EX_IOERR, "Error: Could not read from file");
+          buffer[bytesRead] = 0;
+          bytesRead = read(file, buffer, BUFFER_SIZE - 1);
+          if(bytesRead == -1)
+            exitMessage(errno, EX_IOERR, "Error: Could not read from file");
+          if(bytesRead != 0)
+            exitMessage(0, EX_CONFIG, "Error: Config file too large");
+          close(file);
+          strtok(buffer, "\n");
+          configFileArgv[configFileArgc] = NULL;
+          if((configFileArgv[++configFileArgc] = strtok(buffer, " ")))
+            do if(configFileArgc == MAX_ARGS)
+              exitMessage(0, EX_CONFIG, "Error: Too many arguments");
+	    while ((configFileArgv[++configFileArgc] = strtok(NULL, " ")));
+	  optind = 0;
+	  getConfig(config, configFileArgc, configFileArgv);
+          break;
+        case 'd':
+          config->daemonize = true;
+          break;
+        default:
+          exitMessage(0, EX_USAGE, USAGE);
+      }
+    }
+  }
 }
 
 void
