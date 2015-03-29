@@ -70,6 +70,8 @@ main(const int argc, char *const argv[]) {
       }
     }
   }
+  if(!(networkInterfaceName || clientInterfaceName))
+    exitMessage(0, EX_USAGE, USAGE);
   /*remove this*/
   (void)configFile;
   
