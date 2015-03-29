@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <syslog.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
@@ -14,15 +15,18 @@
 #include <net/if.h>
 
 
-#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if\n"
+#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if"
 #define BUFFER_SIZE 2048
 
 
 void setupAddress(struct sockaddr_ll *address, const int index);
 
 
-void handler(int signalNumber);
-void exitMessage(const int exitCode,  const char *format, ...);
+void handler(const int signalNumber);
+void vwriteLog(const int priority, const char *format, va_list vargs);
+void writeLog(const int priority, const char *format, ...);
+void exitMessage(const int errrorNumber, const int exitCode,
+  const char *format, ...);
 
 
 int socketFd;
@@ -40,14 +44,10 @@ main(const int argc, char *const argv[]) {
   socklen_t packetAddressLen = sizeof(packetAddress);
   struct ifreq ifreq;
 
-  if(signal(SIGINT, handler) == SIG_ERR) {
-    fprintf(stderr, "Error: Could not register signal handler\n");
-    exit(EX_OSERR);
-  }
-  if(signal(SIGTERM, handler) == SIG_ERR) {
-    fprintf(stderr, "Error: Could not register signal handler\n");
-    exit(EX_OSERR);
-  }
+  if(signal(SIGINT, handler) == SIG_ERR)
+    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
+  if(signal(SIGTERM, handler) == SIG_ERR)
+    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
 
   while((optChar = getopt(argc, argv, "-c:d:")) != -1) {
     if(optChar == 1) {
@@ -58,10 +58,7 @@ main(const int argc, char *const argv[]) {
         networkInterfaceName = optarg;
     }
     else {
-      if(nonoption) {
-        printf(USAGE);
-        exit(EX_USAGE);
-      }
+      if(nonoption) exitMessage(0, EX_USAGE, USAGE);
       switch(optChar) {
         case 'c':
           configFile = optarg;
@@ -69,8 +66,7 @@ main(const int argc, char *const argv[]) {
         case 'd':
           break;
         default:
-          printf(USAGE);
-          exit(EX_USAGE);
+          exitMessage(0, EX_USAGE, USAGE);
       }
     }
   }
@@ -79,23 +75,23 @@ main(const int argc, char *const argv[]) {
   
   /* Check interface names and get indices */
   if(!(networkInterfaceIndex = if_nametoindex(networkInterfaceName)))
-    exitMessage(EX_CONFIG,
+    exitMessage(errno, EX_CONFIG,
       "Error: Interface %s does not exist",networkInterfaceName);
   if(!(clientInterfaceIndex = if_nametoindex(clientInterfaceName)))
-    exitMessage(EX_CONFIG,
+    exitMessage(errno, EX_CONFIG,
       "Error: Interface %s does not exist", clientInterfaceName);
 
   /* Create socket */
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
-    exitMessage(EX_IOERR, "Error: Could not create socket");
+    exitMessage(errno, EX_IOERR, "Error: Could not create socket");
 
   /* Put client interface into promiscuous mode */
   strncpy(ifreq.ifr_name, clientInterfaceName, IFNAMSIZ - 1);
   if(ioctl(socketFd, SIOCGIFFLAGS, &ifreq))
-    exitMessage(EX_OSERR, "Error: Could not execute interface reuqest");
+    exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
   ifreq.ifr_flags |= IFF_PROMISC;
   if(ioctl(socketFd, SIOCSIFFLAGS, &ifreq))
-    exitMessage(EX_OSERR, "Error: Could not execute interface reuqest");
+    exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
 
   /* Set outgoing interface indices and address length */
   memset(&networkInterfaceAddress, 0, sizeof(struct sockaddr_ll));
@@ -115,13 +111,13 @@ main(const int argc, char *const argv[]) {
               (struct sockaddr*) &clientInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(EX_IOERR, "Error: Could not send data");
+          exitMessage(errno, EX_IOERR, "Error: Could not send data");
       if(packetAddress.sll_ifindex == clientInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
               (struct sockaddr*) &networkInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(EX_IOERR, "Error: Could not send data");
+          exitMessage(errno, EX_IOERR, "Error: Could not send data");
     }
 
   return EX_OK;
@@ -129,20 +125,43 @@ main(const int argc, char *const argv[]) {
 
 
 void
-handler(int signalNumber) {
+handler(const int signalNumber) {
   (void) signalNumber;
   close(socketFd);
   exit(EX_OK);
 }
 
 void
-exitMessage(const int exitCode,  const char *format, ...) {
-  va_list args;
+vwriteLog(const int priority, const char *format, va_list vargs) {
+  va_list vargsCopy;
+  FILE *stream = (priority < LOG_ERR ? stdout : stderr);
 
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  va_end(args);
-  fprintf(stderr, "\nErrno: %d, %s\n", errno, strerror(errno));
+  va_copy(vargsCopy, vargs);
+  vfprintf(stream, format, vargs);
+  vsyslog(priority, format, vargsCopy);
+  va_end(vargsCopy);
+}
+
+void
+writeLog(const int priority, const char *format, ...) {
+  va_list vargs;
+
+  va_start(vargs, format);
+  vwriteLog(priority, format, vargs);
+  va_end(vargs);
+}
+
+void
+exitMessage(const int errorNumber, const int exitCode,
+    const char *format, ...) {
+  va_list vargs;
+  const int priority = (exitCode ? LOG_ERR : LOG_INFO);
+
+  va_start(vargs, format);
+  vwriteLog(priority, format, vargs);
+  va_end(vargs);
+  fprintf((exitCode ? stderr : stdout), "\n");
+  if(errorNumber) writeLog(LOG_ERR, "Errno: %d, %s\n", errno, strerror(errno));
   
   exit(exitCode);
 }
