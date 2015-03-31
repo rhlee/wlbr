@@ -62,6 +62,9 @@ main(const int argc, char *const argv[]) {
   getConfig(&config, argc, argv);
   if(!(config.networkInterfaceName && config.clientInterfaceName))
     exitMessage(0, EX_USAGE, USAGE);
+
+  if(config.daemonize) if(daemon(0, 0) == -1)
+    exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
   
   /* Check interface names and get indices */
   if(!(networkInterfaceIndex = if_nametoindex(config.networkInterfaceName)))
