@@ -74,11 +74,12 @@ main(const int argc, char *const argv[]) {
     exitMessage(errno, EX_CONFIG,
       "Error: Interface %s does not exist", config.clientInterfaceName);
 
-  /* Create socket */
+  writeLog(LOG_INFO, "Opening packet socket\n");
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
     exitMessage(errno, EX_IOERR, "Error: Could not create socket");
 
-  /* Put client interface into promiscuous mode */
+  writeLog(LOG_INFO, "Putting client interface %s into promicuous mode\n",
+    config.clientInterfaceName);
   strncpy(ifreq.ifr_name, config.clientInterfaceName, IFNAMSIZ - 1);
   if(ioctl(socketFd, SIOCGIFFLAGS, &ifreq))
     exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
@@ -120,7 +121,7 @@ main(const int argc, char *const argv[]) {
 void
 handler(const int signalNumber) {
   (void) signalNumber;
-  /* ------ log here -------*/
+  writeLog(LOG_INFO, "Closing socket\n");
   close(socketFd);
   exit(EX_OK);
 }
