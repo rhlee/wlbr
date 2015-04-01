@@ -55,7 +55,6 @@ main(const int argc, char *const argv[]) {
   struct ifreq ifreq;
 
   openlog("wlbr", LOG_PID | LOG_NDELAY, LOG_USER);
-  syslog(LOG_INFO, "\n");
 
   memset(&config, 0, sizeof(struct config));
   getConfig(&config, argc, argv);
