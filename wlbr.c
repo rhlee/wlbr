@@ -57,11 +57,6 @@ main(const int argc, char *const argv[]) {
   openlog("wlbr", LOG_PID | LOG_NDELAY, LOG_USER);
   syslog(LOG_INFO, "\n");
 
-  if(signal(SIGINT, handler) == SIG_ERR)
-    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
-  if(signal(SIGTERM, handler) == SIG_ERR)
-    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
-
   memset(&config, 0, sizeof(struct config));
   getConfig(&config, argc, argv);
   if(!(config.networkInterfaceName && config.clientInterfaceName))
@@ -81,6 +76,11 @@ main(const int argc, char *const argv[]) {
   writeLog(LOG_INFO, "Opening packet socket\n");
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
     exitMessage(errno, EX_IOERR, "Error: Could not create socket");
+
+  if(signal(SIGINT, handler) == SIG_ERR)
+    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
+  if(signal(SIGTERM, handler) == SIG_ERR)
+    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
 
   writeLog(LOG_INFO, "Putting client interface %s into promicuous mode\n",
     config.clientInterfaceName);
