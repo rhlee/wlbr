@@ -17,7 +17,7 @@
 #include <net/if.h>
 
 
-#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if"
+#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if\n"
 #define BUFFER_SIZE 2048
 #define MAX_ARGS 6
 
@@ -38,6 +38,7 @@ void vwriteLog(const int priority, const char *format, va_list vargs);
 void writeLog(const int priority, const char *format, ...);
 void exitMessage(const int errrorNumber, const int exitCode,
   const char *format, ...);
+void exitUsageError();
 
 
 int socketFd;
@@ -54,6 +55,7 @@ main(const int argc, char *const argv[]) {
   struct ifreq ifreq;
 
   openlog("wlbr", LOG_PID | LOG_NDELAY, LOG_USER);
+  syslog(LOG_INFO, "\n");
 
   if(signal(SIGINT, handler) == SIG_ERR)
     exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
@@ -63,7 +65,7 @@ main(const int argc, char *const argv[]) {
   memset(&config, 0, sizeof(struct config));
   getConfig(&config, argc, argv);
   if(!(config.networkInterfaceName && config.clientInterfaceName))
-    exitMessage(0, EX_USAGE, USAGE);
+    exitUsageError();
 
   if(config.daemonize) if(daemon(0, 0) == -1)
     exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
@@ -145,7 +147,7 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
           config->clientInterfaceName = optarg;
           break;
         default:
-          exitMessage(0, EX_USAGE, USAGE);
+          exitUsageError();
       }
       nonoption++;
     }
@@ -179,7 +181,7 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
           config->daemonize = true;
           break;
         default:
-          exitMessage(0, EX_USAGE, USAGE);
+          exitUsageError();
       }
     }
   }
@@ -218,4 +220,11 @@ exitMessage(const int errorNumber, const int exitCode,
   if(errorNumber) writeLog(LOG_ERR, "Errno: %d, %s\n", errno, strerror(errno));
   
   exit(exitCode);
+}
+
+void
+exitUsageError() {
+  fprintf(stderr, USAGE);
+  syslog(LOG_ERR, "Error: Invalid options. Please see usage");
+  exit(EX_USAGE);
 }
