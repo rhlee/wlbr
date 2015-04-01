@@ -53,6 +53,8 @@ main(const int argc, char *const argv[]) {
   socklen_t packetAddressLen = sizeof(packetAddress);
   struct ifreq ifreq;
 
+  openlog("wlbr", LOG_PID | LOG_NDELAY, LOG_USER);
+
   if(signal(SIGINT, handler) == SIG_ERR)
     exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
   if(signal(SIGTERM, handler) == SIG_ERR)
@@ -123,6 +125,7 @@ handler(const int signalNumber) {
   (void) signalNumber;
   writeLog(LOG_INFO, "Closing socket\n");
   close(socketFd);
+  closelog();
   exit(EX_OK);
 }
 
