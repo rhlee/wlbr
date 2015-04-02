@@ -24,7 +24,7 @@
 
 struct config {
   bool daemonize;
-  const char *networkInterfaceName;
+  const char *wirelessInterfaceName;
   const char *clientInterfaceName;
 };
 
@@ -47,8 +47,8 @@ int socketFd;
 int
 main(const int argc, char *const argv[]) {
   struct config config;
-  int networkInterfaceIndex, clientInterfaceIndex, bytesRead;
-  struct sockaddr_ll networkInterfaceAddress, clientInterfaceAddress,
+  int wirelessInterfaceIndex, clientInterfaceIndex, bytesRead;
+  struct sockaddr_ll wirelessInterfaceAddress, clientInterfaceAddress,
     packetAddress;
   uint8_t buffer[BUFFER_SIZE];
   socklen_t packetAddressLen = sizeof(packetAddress);
@@ -58,13 +58,13 @@ main(const int argc, char *const argv[]) {
 
   memset(&config, 0, sizeof(struct config));
   getConfig(&config, argc, argv);
-  if(!(config.networkInterfaceName && config.clientInterfaceName))
+  if(!(config.wirelessInterfaceName && config.clientInterfaceName))
     exitUsageError();
 
   /* Check interface names and get indices */
-  if(!(networkInterfaceIndex = if_nametoindex(config.networkInterfaceName)))
+  if(!(wirelessInterfaceIndex = if_nametoindex(config.wirelessInterfaceName)))
     exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist",config.networkInterfaceName);
+      "Error: Interface %s does not exist",config.wirelessInterfaceName);
   if(!(clientInterfaceIndex = if_nametoindex(config.clientInterfaceName)))
     exitMessage(errno, EX_CONFIG,
       "Error: Interface %s does not exist", config.clientInterfaceName);
@@ -88,16 +88,16 @@ main(const int argc, char *const argv[]) {
     exitMessage(errno, EX_OSERR, "Error: Could not execute interface request");
 
   /* Set outgoing interface indices and address length */
-  memset(&networkInterfaceAddress, 0, sizeof(struct sockaddr_ll));
-  networkInterfaceAddress.sll_ifindex = networkInterfaceIndex;
-  networkInterfaceAddress.sll_halen = ETH_ALEN;
+  memset(&wirelessInterfaceAddress, 0, sizeof(struct sockaddr_ll));
+  wirelessInterfaceAddress.sll_ifindex = wirelessInterfaceIndex;
+  wirelessInterfaceAddress.sll_halen = ETH_ALEN;
   memset(&clientInterfaceAddress, 0, sizeof(struct sockaddr_ll));
   clientInterfaceAddress.sll_ifindex = clientInterfaceIndex;
   clientInterfaceAddress.sll_halen = ETH_ALEN;
   
   writeLog(LOG_INFO,
-    "Bridge between wireless interface %s and wired interface %s now running\n",
-    config.networkInterfaceName,
+"Bridge between wireless interface %s and wired client interface %s now running\n",
+    config.wirelessInterfaceName,
     config.clientInterfaceName);
   
   writeLog(LOG_INFO, "Daemonizing process\n");
@@ -111,7 +111,7 @@ main(const int argc, char *const argv[]) {
       recvfrom(socketFd, buffer, BUFFER_SIZE, 0,
          (struct sockaddr*) &packetAddress, &packetAddressLen)))
     if(packetAddress.sll_pkttype != 4) {
-      if(packetAddress.sll_ifindex == networkInterfaceIndex)
+      if(packetAddress.sll_ifindex == wirelessInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
               (struct sockaddr*) &clientInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
@@ -119,7 +119,7 @@ main(const int argc, char *const argv[]) {
           exitMessage(errno, EX_IOERR, "Error: Could not send data");
       if(packetAddress.sll_ifindex == clientInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
-              (struct sockaddr*) &networkInterfaceAddress,
+              (struct sockaddr*) &wirelessInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
             bytesRead)
           exitMessage(errno, EX_IOERR, "Error: Could not send data");
@@ -148,7 +148,7 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
     if(optChar == 1) {
       switch(nonoption) {
         case 0:
-          config->networkInterfaceName = optarg;
+          config->wirelessInterfaceName = optarg;
           break;
         case 1:
           config->clientInterfaceName = optarg;
