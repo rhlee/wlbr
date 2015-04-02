@@ -61,9 +61,6 @@ main(const int argc, char *const argv[]) {
   if(!(config.networkInterfaceName && config.clientInterfaceName))
     exitUsageError();
 
-  if(config.daemonize) if(daemon(0, 0) == -1)
-    exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
-  
   /* Check interface names and get indices */
   if(!(networkInterfaceIndex = if_nametoindex(config.networkInterfaceName)))
     exitMessage(errno, EX_CONFIG,
@@ -97,6 +94,9 @@ main(const int argc, char *const argv[]) {
   memset(&clientInterfaceAddress, 0, sizeof(struct sockaddr_ll));
   clientInterfaceAddress.sll_ifindex = clientInterfaceIndex;
   clientInterfaceAddress.sll_halen = ETH_ALEN;
+  
+  if(config.daemonize) if(daemon(0, 0) == -1)
+    exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
   
   /* Repeater loop */
   while((bytesRead =
