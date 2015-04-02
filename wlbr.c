@@ -82,10 +82,10 @@ main(const int argc, char *const argv[]) {
     config.clientInterfaceName);
   strncpy(ifreq.ifr_name, config.clientInterfaceName, IFNAMSIZ - 1);
   if(ioctl(socketFd, SIOCGIFFLAGS, &ifreq))
-    exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
+    exitMessage(errno, EX_OSERR, "Error: Could not execute interface request");
   ifreq.ifr_flags |= IFF_PROMISC;
   if(ioctl(socketFd, SIOCSIFFLAGS, &ifreq))
-    exitMessage(errno, EX_OSERR, "Error: Could not execute interface reuqest");
+    exitMessage(errno, EX_OSERR, "Error: Could not execute interface request");
 
   /* Set outgoing interface indices and address length */
   memset(&networkInterfaceAddress, 0, sizeof(struct sockaddr_ll));
@@ -95,9 +95,17 @@ main(const int argc, char *const argv[]) {
   clientInterfaceAddress.sll_ifindex = clientInterfaceIndex;
   clientInterfaceAddress.sll_halen = ETH_ALEN;
   
-  if(config.daemonize) if(daemon(0, 0) == -1)
-    exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
+  writeLog(LOG_INFO,
+    "Bridge between wireless interface %s and wired interface %s now running\n",
+    config.networkInterfaceName,
+    config.clientInterfaceName);
   
+  writeLog(LOG_INFO, "Daemonizing process\n");
+  if(config.daemonize) {
+    if(daemon(0, 0) == -1)
+      exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
+  }
+
   /* Repeater loop */
   while((bytesRead =
       recvfrom(socketFd, buffer, BUFFER_SIZE, 0,
@@ -124,7 +132,7 @@ main(const int argc, char *const argv[]) {
 void
 handler(const int signalNumber) {
   (void) signalNumber;
-  writeLog(LOG_INFO, "Closing socket\n");
+  writeLog(LOG_INFO, "Closing bridge and packet socket\n");
   close(socketFd);
   closelog();
   exit(EX_OK);
