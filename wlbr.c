@@ -180,10 +180,10 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
           if((configFileArgv[++configFileArgc] = strtok(buffer, " ")))
             do if(configFileArgc == MAX_ARGS)
               exitMessage(0, EX_CONFIG, "Error: Too many arguments");
-	    while ((configFileArgv[++configFileArgc] = strtok(NULL, " ")));
-	  configFileArgv[configFileArgc] = NULL;
-	  optind = 0;
-	  getConfig(config, configFileArgc, configFileArgv);
+            while ((configFileArgv[++configFileArgc] = strtok(NULL, " ")));
+          configFileArgv[configFileArgc] = NULL;
+          optind = 0;
+          getConfig(config, configFileArgc, configFileArgv);
           return;
           break;
         case 'd':
