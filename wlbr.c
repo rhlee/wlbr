@@ -140,7 +140,7 @@ handler(const int signalNumber) {
 
 void
 getConfig(struct config *config, const int argc, char *const argv[]) {
-  char *configFileArgv[MAX_ARGS];
+  char *configFileArgv[MAX_ARGS + 1];
   char buffer[BUFFER_SIZE];
   int file, bytesRead, nonoption = 0, optChar, configFileArgc = 0;
 
@@ -181,8 +181,10 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
             do if(configFileArgc == MAX_ARGS)
               exitMessage(0, EX_CONFIG, "Error: Too many arguments");
 	    while ((configFileArgv[++configFileArgc] = strtok(NULL, " ")));
+	  configFileArgv[configFileArgc] = NULL;
 	  optind = 0;
 	  getConfig(config, configFileArgc, configFileArgv);
+          return;
           break;
         case 'd':
           config->daemonize = true;
