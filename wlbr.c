@@ -100,8 +100,8 @@ main(const int argc, char *const argv[]) {
     config.wirelessInterfaceName,
     config.clientInterfaceName);
   
-  writeLog(LOG_INFO, "Daemonizing process\n");
   if(config.daemonize) {
+    writeLog(LOG_INFO, "Daemonizing process\n");
     if(daemon(0, 0) == -1)
       exitMessage(errno, EX_OSERR, "Error: Could not daemonize process");
   }
