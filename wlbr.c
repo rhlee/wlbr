@@ -24,8 +24,8 @@
 
 struct config {
   bool daemonize;
-  const char *wirelessInterfaceName;
-  const char *clientInterfaceName;
+  char wirelessInterfaceName[IFNAMSIZ];
+  char clientInterfaceName[IFNAMSIZ];
 };
 
 
@@ -58,7 +58,7 @@ main(const int argc, char *const argv[]) {
 
   memset(&config, 0, sizeof(struct config));
   getConfig(&config, argc, argv);
-  if(!(config.wirelessInterfaceName && config.clientInterfaceName))
+  if(!(*config.wirelessInterfaceName && *config.clientInterfaceName))
     exitUsageError();
 
   /* Check interface names and get indices */
@@ -148,10 +148,14 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
     if(optChar == 1) {
       switch(nonoption) {
         case 0:
-          config->wirelessInterfaceName = optarg;
+          if(snprintf(config->wirelessInterfaceName, IFNAMSIZ, "%s", optarg) >=
+              IFNAMSIZ)
+            exitMessage(0, EX_CONFIG, "Error: Interface name too long");
           break;
         case 1:
-          config->clientInterfaceName = optarg;
+          if(snprintf(config->clientInterfaceName, IFNAMSIZ, "%s", optarg) >=
+              IFNAMSIZ)
+            exitMessage(0, EX_CONFIG, "Error: Interface name too long");
           break;
         default:
           exitUsageError();
