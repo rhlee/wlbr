@@ -1,0 +1,27 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+
+
+CONFIG_FILE=/etc/wlbr
+
+
+start() {
+	local wlbr_path=$(which wlbr)
+	local pid
+	for pid in $(pidof wlbr)
+	do
+		if test $(cat /proc/$pid/cmdline | tr "\0" "\n" | head -1) = \
+			wlbr
+		then
+			echo wlbr already running
+			exit
+		fi
+	done
+	wlbr -c $CONFIG_FILE
+}
+
+stop () {
+	killall wlbr
+}
