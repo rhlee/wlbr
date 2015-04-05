@@ -64,7 +64,7 @@ main(const int argc, char *const argv[]) {
   /* Check interface names and get indices */
   if(!(wirelessInterfaceIndex = if_nametoindex(config.wirelessInterfaceName)))
     exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist",config.wirelessInterfaceName);
+      "Error: Interface %s does not exist", config.wirelessInterfaceName);
   if(!(clientInterfaceIndex = if_nametoindex(config.clientInterfaceName)))
     exitMessage(errno, EX_CONFIG,
       "Error: Interface %s does not exist", config.clientInterfaceName);
