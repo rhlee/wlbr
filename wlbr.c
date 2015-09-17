@@ -32,7 +32,7 @@ struct config {
 void setupAddress(struct sockaddr_ll *address, const int index);
 
 
-void handler(const int signalNumber);
+void terminationHandler(const int signalNumber);
 void getConfig(struct config *config, const int argc, char *const argv[]);
 void vwriteLog(const int priority, const char *format, va_list vargs);
 void writeLog(const int priority, const char *format, ...);
@@ -41,12 +41,13 @@ void exitMessage(const int errrorNumber, const int exitCode,
 void exitUsageError();
 
 
-int socketFd;
+int socketFd = -1;
 
 
 int
 main(const int argc, char *const argv[]) {
   struct config config;
+  struct sigaction terminationAction;
   int wirelessInterfaceIndex, clientInterfaceIndex, bytesRead;
   struct sockaddr_ll wirelessInterfaceAddress, clientInterfaceAddress,
     packetAddress;
@@ -61,6 +62,13 @@ main(const int argc, char *const argv[]) {
   if(!(*config.wirelessInterfaceName && *config.clientInterfaceName))
     exitUsageError();
 
+  terminationAction.sa_handler = terminationHandler;
+  sigemptyset(&terminationAction.sa_mask);
+  terminationAction.sa_flags = 0;
+
+  sigaction(SIGINT, &terminationAction, NULL);
+  sigaction(SIGTERM, &terminationAction, NULL);
+
   /* Check interface names and get indices */
   if(!(wirelessInterfaceIndex = if_nametoindex(config.wirelessInterfaceName)))
     exitMessage(errno, EX_CONFIG,
@@ -72,11 +80,6 @@ main(const int argc, char *const argv[]) {
   writeLog(LOG_INFO, "Opening packet socket\n");
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
     exitMessage(errno, EX_IOERR, "Error: Could not create socket");
-
-  if(signal(SIGINT, handler) == SIG_ERR)
-    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
-  if(signal(SIGTERM, handler) == SIG_ERR)
-    exitMessage(0, EX_OSERR, "Error: Could not register signal handler");
 
   writeLog(LOG_INFO, "Putting client interface %s into promicuous mode\n",
     config.clientInterfaceName);
@@ -130,10 +133,12 @@ main(const int argc, char *const argv[]) {
 
 
 void
-handler(const int signalNumber) {
+terminationHandler(const int signalNumber) {
   (void) signalNumber;
-  writeLog(LOG_INFO, "Closing bridge and packet socket\n");
-  close(socketFd);
+  if(socketFd != -1) {
+    writeLog(LOG_INFO, "Closing bridge and packet socket\n");
+    close(socketFd);
+  }
   closelog();
   exit(EX_OK);
 }
