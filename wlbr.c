@@ -17,13 +17,14 @@
 #include <net/if.h>
 
 
-#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] wireless-if client-if\n"
+#define USAGE "Usage:\twlbr -c config-file\n\twlbr [-d] [-w]  wireless-if client-if\n"
 #define BUFFER_SIZE 2048
 #define MAX_ARGS 6
 
 
 struct config {
   bool daemonize;
+  bool wait;
   char wirelessInterfaceName[IFNAMSIZ];
   char clientInterfaceName[IFNAMSIZ];
 };
@@ -33,6 +34,7 @@ void setupAddress(struct sockaddr_ll *address, const int index);
 
 
 void terminationHandler(const int signalNumber);
+void USR1Handler(const int signalNumber);
 void getConfig(struct config *config, const int argc, char *const argv[]);
 void vwriteLog(const int priority, const char *format, va_list vargs);
 void writeLog(const int priority, const char *format, ...);
@@ -41,14 +43,16 @@ void exitMessage(const int errrorNumber, const int exitCode,
 void exitUsageError();
 
 
+volatile sig_atomic_t USR1Signalled = 0;
 int socketFd = -1;
 
 
 int
 main(const int argc, char *const argv[]) {
   struct config config;
-  struct sigaction terminationAction;
-  int wirelessInterfaceIndex, clientInterfaceIndex, bytesRead;
+  struct sigaction terminationAction, USR1Action;
+  sigset_t mask, originalMask;
+  int wirelessInterfaceIndex = 0, clientInterfaceIndex = 0, bytesRead;
   struct sockaddr_ll wirelessInterfaceAddress, clientInterfaceAddress,
     packetAddress;
   uint8_t buffer[BUFFER_SIZE];
@@ -65,17 +69,36 @@ main(const int argc, char *const argv[]) {
   terminationAction.sa_handler = terminationHandler;
   sigemptyset(&terminationAction.sa_mask);
   terminationAction.sa_flags = 0;
-
   sigaction(SIGINT, &terminationAction, NULL);
   sigaction(SIGTERM, &terminationAction, NULL);
 
   /* Check interface names and get indices */
-  if(!(wirelessInterfaceIndex = if_nametoindex(config.wirelessInterfaceName)))
-    exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist", config.wirelessInterfaceName);
-  if(!(clientInterfaceIndex = if_nametoindex(config.clientInterfaceName)))
-    exitMessage(errno, EX_CONFIG,
-      "Error: Interface %s does not exist", config.clientInterfaceName);
+  USR1Action.sa_handler = USR1Handler;
+  sigemptyset(&USR1Action.sa_mask);
+  USR1Action.sa_flags = 0;
+  sigaction(SIGUSR1, &USR1Action, NULL);
+
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGUSR1);
+
+  while(!((wirelessInterfaceIndex =
+        if_nametoindex(config.wirelessInterfaceName)) &&
+      (clientInterfaceIndex = if_nametoindex(config.clientInterfaceName)))) {
+    if(config.wait) {
+      if(!wirelessInterfaceIndex) writeLog(LOG_INFO,
+	"Interface %s not found\n", config.wirelessInterfaceName);
+      if(!clientInterfaceIndex) writeLog(LOG_INFO,
+	"Interface %s not found\n", config.clientInterfaceName);
+      writeLog(LOG_INFO, "Waiting on USR1 signal before checking again ...\n");
+      sigprocmask(SIG_BLOCK, &mask, &originalMask);
+      while(!USR1Signalled) sigsuspend(&originalMask);
+      USR1Signalled = 0;
+      sigprocmask(SIG_UNBLOCK, &mask, NULL);
+    }
+    else exitMessage(errno, EX_CONFIG, "Error: Interface %s does not exist",
+      wirelessInterfaceIndex ?
+        config.clientInterfaceName : config.wirelessInterfaceName);
+  }
 
   writeLog(LOG_INFO, "Opening packet socket\n");
   if((socketFd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
@@ -144,12 +167,18 @@ terminationHandler(const int signalNumber) {
 }
 
 void
+USR1Handler(const int signalNumber) {
+  (void) signalNumber;
+  USR1Signalled = 1;
+}
+
+void
 getConfig(struct config *config, const int argc, char *const argv[]) {
   char *configFileArgv[MAX_ARGS + 1];
   char buffer[BUFFER_SIZE];
   int file, bytesRead, nonoption = 0, optChar, configFileArgc = 0;
 
-  while((optChar = getopt(argc, argv, "-c:d")) != -1) {
+  while((optChar = getopt(argc, argv, "-c:dw")) != -1) {
     if(optChar == 1) {
       switch(nonoption) {
         case 0:
@@ -197,6 +226,9 @@ getConfig(struct config *config, const int argc, char *const argv[]) {
           break;
         case 'd':
           config->daemonize = true;
+          break;
+        case 'w':
+          config->wait = true;
           break;
         default:
           exitUsageError();
