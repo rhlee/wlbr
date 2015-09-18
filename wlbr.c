@@ -91,8 +91,8 @@ main(const int argc, char *const argv[]) {
 	"Interface %s not found\n", config.clientInterfaceName);
       writeLog(LOG_INFO, "Waiting on USR1 signal before checking again ...\n");
       sigprocmask(SIG_BLOCK, &mask, &originalMask);
-      while(!USR1Signalled) sigsuspend(&originalMask);
       USR1Signalled = 0;
+      while(!USR1Signalled) sigsuspend(&originalMask);
       sigprocmask(SIG_UNBLOCK, &mask, NULL);
     }
     else exitMessage(errno, EX_CONFIG, "Error: Interface %s does not exist",
