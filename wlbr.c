@@ -142,13 +142,23 @@ main(const int argc, char *const argv[]) {
               (struct sockaddr*) &clientInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(errno, EX_IOERR, "Error: Could not send data");
+          writeLog(
+            LOG_ERR,
+            "Could not send data. Error %d, %s\n",
+            errno,
+            strerror(errno)
+          );
       if(packetAddress.sll_ifindex == clientInterfaceIndex)
         if(sendto(socketFd, buffer, bytesRead, 0,
               (struct sockaddr*) &wirelessInterfaceAddress,
               sizeof(struct sockaddr_ll)) !=
             bytesRead)
-          exitMessage(errno, EX_IOERR, "Error: Could not send data");
+          writeLog(
+            LOG_ERR,
+            "Could not send data. Error %d, %s\n",
+            errno,
+            strerror(errno)
+          );
     }
 
   return EX_OK;
